@@ -1,0 +1,10 @@
+# Ejecución del sistema
+requests>=2.31
+python-dotenv>=1.0
+
+# Interfaz web
+fastapi>=0.110
+uvicorn>=0.29
+
+# Desarrollo / pruebas
+pytest>=8.0

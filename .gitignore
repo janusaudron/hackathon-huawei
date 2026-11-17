@@ -1,0 +1,14 @@
+# Secretos: nunca al repositorio
+.env
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Salidas locales de casos procesados (los resultados oficiales del kit
+# se entregan en la carpeta casos/ del repositorio)
+casos/
+!casos/.gitkeep

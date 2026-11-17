@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>El analista de incidentes que nunca duerme</title>
+<style>
+  :root {
+    --fondo: #0f1419; --panel: #1a2129; --borde: #2d3742;
+    --texto: #e2e8f0; --suave: #94a3b8; --acento: #38bdf8;
+    --ok: #34d399; --error: #f87171; --pend: #64748b; --curso: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--fondo); color: var(--texto);
+    font-family: "Segoe UI", system-ui, sans-serif; font-size: 15px;
+  }
+  header {
+    padding: 18px 28px; background: var(--panel); border-bottom: 1px solid var(--borde);
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 19px; margin: 0; }
+  header span { color: var(--suave); font-size: 13px; }
+  main { max-width: 1000px; margin: 0 auto; padding: 24px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--borde);
+    border-radius: 10px; padding: 18px 20px; margin-bottom: 20px;
+  }
+  .panel h2 { margin: 0 0 12px; font-size: 15px; color: var(--acento); }
+  label { display: block; margin: 10px 0 4px; color: var(--suave); font-size: 13px; }
+  input[type=text] {
+    width: 100%; padding: 9px 11px; background: var(--fondo); color: var(--texto);
+    border: 1px solid var(--borde); border-radius: 7px; font-size: 14px;
+  }
+  button {
+    margin-top: 16px; padding: 10px 22px; border: none; border-radius: 7px;
+    background: var(--acento); color: #08222e; font-weight: 600; font-size: 14px;
+    cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: wait; }
+  .fases { display: flex; flex-direction: column; gap: 7px; margin-top: 6px; }
+  .fase {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 9px 13px; border: 1px solid var(--borde); border-radius: 7px;
+    background: var(--fondo); font-size: 14px;
+  }
+  .fase .punto { font-weight: 700; margin-right: 9px; }
+  .estado-pendiente { color: var(--pend); }
+  .estado-en_curso { color: var(--curso); }
+  .estado-completada { color: var(--ok); }
+  .estado-error { color: var(--error); }
+  .estado-omitida { color: var(--pend); }
+  .mensaje { margin-top: 12px; font-size: 13px; color: var(--suave); }
+  .error { color: var(--error); }
+  pre {
+    background: var(--fondo); border: 1px solid var(--borde); border-radius: 8px;
+    padding: 16px; overflow: auto; font-size: 12.5px; line-height: 1.55;
+    white-space: pre-wrap; max-height: 640px;
+  }
+  .acciones { display: flex; gap: 10px; flex-wrap: wrap; }
+  .acciones a {
+    color: var(--acento); text-decoration: none; font-size: 13px;
+    border: 1px solid var(--borde); padding: 6px 12px; border-radius: 7px;
+  }
+  .acciones a:hover { border-color: var(--acento); }
+  .oculto { display: none; }
+  footer { text-align: center; color: var(--suave); font-size: 12px; padding: 18px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>El analista de incidentes que nunca duerme</h1>
+  <span>sistema multiagente AMS · Huawei Cloud MaaS</span>
+</header>
+<main>
+  <section class="panel">
+    <h2>1. Cargar el incidente</h2>
+    <label>Directorio de logs (archivos .log)</label>
+    <input type="text" id="logs_dir" value="kit/datos/checkout-incident">
+    <label>Ticket del incidente (ticket.json)</label>
+    <input type="text" id="ticket" value="kit/datos/checkout-incident/ticket.json">
+    <label>Base de problemas conocidos (opcional)</label>
+    <input type="text" id="problemas" value="kit/datos/problemas_conocidos.json">
+    <button id="btn_analizar">Analizar incidente</button>
+    <div id="mensaje" class="mensaje"></div>
+  </section>
+
+  <section class="panel oculto" id="panel_progreso">
+    <h2>2. Progreso del análisis</h2>
+    <div class="fases" id="fases"></div>
+    <div id="error_caso" class="mensaje error"></div>
+  </section>
+
+  <section class="panel oculto" id="panel_reporte">
+    <h2>3. Reporte final</h2>
+    <div class="acciones">
+      <a id="link_caso" target="_blank">caso.json</a>
+      <a id="link_auditoria" target="_blank">auditoría.jsonl</a>
+    </div>
+    <pre id="reporte"></pre>
+  </section>
+</main>
+<footer>Los agentes analizan y proponen; nunca ejecutan cambios en sistemas.</footer>
+
+<script>
+const FASES = ["preparacion", "ingesta", "triage", "causa_raiz", "resolucion", "comunicacion"];
+const SIMBOLOS = { pendiente: "○", en_curso: "◐", completada: "●", error: "✕", omitida: "–" };
+let temporizador = null;
+
+function $(id) { return document.getElementById(id); }
+
+function pintarFases(estado) {
+  const cont = $("fases");
+  cont.innerHTML = "";
+  for (const fase of FASES) {
+    const est = (estado.fases && estado.fases[fase]) || "pendiente";
+    const div = document.createElement("div");
+    div.className = "fase";
+    div.innerHTML = "<span><span class='punto estado-" + est + "'>" + (SIMBOLOS[est] || "○") +
+      "</span>" + fase + "</span><span class='estado-" + est + "'>" + est + "</span>";
+    cont.appendChild(div);
+  }
+}
+
+async function analizar() {
+  const cuerpo = {
+    logs_dir: $("logs_dir").value.trim(),
+    ticket: $("ticket").value.trim(),
+    problemas: $("problemas").value.trim() || null
+  };
+  $("btn_analizar").disabled = true;
+  $("mensaje").textContent = "Lanzando análisis... (cada fase puede tardar de 1 a 3 minutos)";
+  try {
+    const resp = await fetch("/api/analizar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cuerpo)
+    });
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.detail || "no se pudo iniciar el análisis");
+    }
+    const datos = await resp.json();
+    $("panel_progreso").classList.remove("oculto");
+    $("mensaje").textContent = "Caso " + datos.case_id + " en curso · modo: " + datos.modo +
+      (datos.modo === "mock" ? " (sin clave de MaaS: salidas simuladas)" : "");
+    temporizador = setInterval(() => consultar(datos.case_id), 2500);
+  } catch (exc) {
+    $("mensaje").textContent = "Error: " + exc.message;
+    $("btn_analizar").disabled = false;
+  }
+}
+
+async function consultar(caseId) {
+  try {
+    const resp = await fetch("/api/casos/" + caseId + "/estado");
+    if (!resp.ok) return;
+    const estado = await resp.json();
+    pintarFases(estado);
+    if (estado.error) {
+      $("error_caso").textContent = "Error del caso: " + estado.error;
+    }
+    if (estado.finalizado) {
+      clearInterval(temporizador);
+      $("btn_analizar").disabled = false;
+      const real = estado.case_id_real || caseId;
+      await mostrarReporte(real);
+    }
+  } catch (exc) { /* reintenta en el próximo tick */ }
+}
+
+async function mostrarReporte(caseId) {
+  const resp = await fetch("/api/casos/" + caseId + "/reporte");
+  if (resp.ok) {
+    $("reporte").textContent = await resp.text();
+    $("panel_reporte").classList.remove("oculto");
+  }
+  $("link_caso").href = "/api/casos/" + caseId + "/caso";
+  $("link_auditoria").href = "/casos/" + caseId + "/auditoria.jsonl";
+}
+
+$("btn_analizar").addEventListener("click", analizar);
+</script>
+</body>
+</html>
